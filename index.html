@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Siri</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #121212;
+      color: white;
+    }
+    #orb {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(79, 172, 254, 0.5);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #orb:active {
+      transform: scale(0.95);
+    }
+    #orb.listening {
+      animation: pulse 1.5s infinite;
+      box-shadow: 0 0 40px rgba(79, 172, 254, 0.8);
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    #status {
+      margin-top: 30px;
+      font-size: 1.2rem;
+      color: #aaa;
+    }
+    #transcript {
+      margin-top: 15px;
+      font-size: 1.5rem;
+      text-align: center;
+      max-width: 80%;
+      min-height: 2em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- The "Siri" Button -->
+  <div id="orb">Tap</div>
+  
+  <div id="status">Tap the orb to speak</div>
+  <div id="transcript"></div>
+
+  <script>
+    const orb = document.getElementById('orb');
+    const statusText = document.getElementById('status');
+    const transcriptText = document.getElementById('transcript');
+
+    // 1. Initialize Speech Recognition (Browser's built-in STT)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      statusText.innerText = "Speech Recognition not supported in this browser. Try Chrome.";
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false; // Only get final results
+
+      // 2. Initialize Speech Synthesis (Browser's built-in TTS)
+      const synth = window.speechSynthesis;
+
+      // Handle the button click
+      orb.addEventListener('click', () => {
+        // Stop any ongoing speech
+        synth.cancel(); 
+        
+        recognition.start();
+        orb.classList.add('listening');
+        statusText.innerText = "Listening...";
+        transcriptText.innerText = "";
+      });
+
+      // Handle the transcribed text
+      recognition.onresult = async (event) => {
+        orb.classList.remove('listening');
+        const userSpoke = event.results[0][0].transcript;
+        transcriptText.innerText = `"${userSpoke}"`;
+        statusText.innerText = "Thinking...";
+
+        try {
+          // 3. Send the text to our secure backend (server.js)
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: userSpoke })
+          });
+          
+          const data = await response.json();
+          
+          if (data.error) throw new Error(data.error);
+
+          statusText.innerText = "Responding...";
+          
+          // 4. Speak the AI's response aloud
+          const utterance = new SpeechSynthesisUtterance(data.text);
+          // Optional: Change the voice
+          // const voices = synth.getVoices();
+          // utterance.voice = voices.find(v => v.name.includes('Google US English')) || voices[0];
+          
+          utterance.onend = () => {
+            statusText.innerText = "Tap the orb to speak";
+          };
+          
+          synth.speak(utterance);
+
+        } catch (error) {
+          console.error(error);
+          statusText.innerText = "Error connecting to brain.";
+        }
+      };
+
+      // Handle errors or stopping
+      recognition.onerror = (event) => {
+        orb.classList.remove('listening');
+        statusText.innerText = "Error: " + event.error;
+      };
+      
+      recognition.onspeechend = () => {
+        recognition.stop();
+      };
+    }
+  </script>
+</body>
+</html>
