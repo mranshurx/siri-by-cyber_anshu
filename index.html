@@ -35,7 +35,6 @@
       position: relative;
     }
 
-    /* Ambient background blur */
     .bg-glow {
       position: absolute;
       width: 300px;
@@ -72,7 +71,6 @@
       margin-bottom: 24px;
     }
 
-    /* Siri Orb Container */
     .orb-wrapper {
       position: relative;
       width: 160px;
@@ -116,7 +114,6 @@
       transition: all 0.4s ease;
     }
 
-    /* Orb Animations */
     .orb.listening {
       animation: gradientShift 2s ease infinite, pulseOrb 1.2s ease-in-out infinite alternate;
       background: linear-gradient(135deg, #ff2a8d 0%, #ff6a00 50%, #00d2ff 100%);
@@ -151,7 +148,6 @@
       100% { transform: rotate(360deg) scale(1.2); }
     }
 
-    /* Wave visualizer */
     .wave-container {
       display: flex;
       align-items: center;
@@ -162,9 +158,7 @@
       transition: opacity 0.3s ease;
     }
 
-    .wave-container.active {
-      opacity: 1;
-    }
+    .wave-container.active { opacity: 1; }
 
     .bar {
       width: 3px;
@@ -232,11 +226,23 @@
     <div id="status">Tap orb to speak</div>
     <div id="transcript"></div>
 
-    <div class="hint">Powered by Groq • Llama 3.3 70B</div>
+    <div class="hint">Try saying "Open YouTube" or ask any question</div>
   </div>
 
   <script>
     const API_KEY = "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";
+
+    // Web-supported Deep Link URLs for installed mobile apps
+    const appLinks = {
+      "youtube": "https://www.youtube.com",
+      "whatsapp": "whatsapp://",
+      "instagram": "instagram://app",
+      "spotify": "spotify://",
+      "twitter": "twitter://",
+      "x": "twitter://",
+      "maps": "https://maps.google.com",
+      "google": "https://www.google.com"
+    };
 
     const orb = document.getElementById('orb');
     const wave = document.getElementById('wave');
@@ -246,18 +252,13 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      statusText.innerText = "Speech Recognition not supported in this browser. Try Chrome.";
+      statusText.innerText = "Speech Recognition not supported. Try Google Chrome.";
     } else {
       const recognition = new SpeechRecognition();
       recognition.lang = 'en-US';
       const synth = window.speechSynthesis;
 
       orb.addEventListener('click', () => {
-        if (!API_KEY || API_KEY.includes("PASTE_YOUR")) {
-          alert("Please enter a valid API key inside index.html!");
-          return;
-        }
-
         synth.cancel();
         try {
           recognition.start();
@@ -267,15 +268,38 @@
           statusText.style.color = "#00d2ff";
           transcriptText.innerText = "";
         } catch (e) {
-          console.log("Recognition already active");
+          console.log("Already listening");
         }
       });
 
       recognition.onresult = async (event) => {
         orb.className = "orb thinking";
         wave.classList.remove('active');
-        const userSpoke = event.results[0][0].transcript;
+        
+        const userSpoke = event.results[0][0].transcript.trim();
         transcriptText.innerText = `"${userSpoke}"`;
+
+        const lowerSpoke = userSpoke.toLowerCase();
+
+        // 1. INTERCEPT APP COMMANDS (e.g., "Open YouTube")
+        if (lowerSpoke.startsWith("open ")) {
+          const appName = lowerSpoke.replace("open ", "").trim();
+
+          if (appLinks[appName]) {
+            orb.className = "orb";
+            statusText.innerText = `Opening ${appName}...`;
+            statusText.style.color = "#92fe9d";
+
+            const utterance = new SpeechSynthesisUtterance(`Opening ${appName}`);
+            utterance.onend = () => {
+              window.location.href = appLinks[appName];
+            };
+            synth.speak(utterance);
+            return; // Stops here, skips Groq API call!
+          }
+        }
+
+        // 2. DEFAULT: Send query to Groq AI
         statusText.innerText = "Thinking...";
         statusText.style.color = "#ff2a8d";
 
@@ -289,17 +313,14 @@
             body: JSON.stringify({
               model: "llama-3.3-70b-versatile",
               messages: [
-                { role: "system", content: "You are Siri v2.0, an intelligent, elegant, and concise voice assistant. Answer concisely in under 2 short sentences." },
+                { role: "system", content: "You are Siri v2.0, a concise web voice assistant. Answer in under 2 short sentences." },
                 { role: "user", content: userSpoke }
               ]
             })
           });
 
           const data = await response.json();
-
-          if (data.error) {
-            throw new Error(data.error.message || "API Error");
-          }
+          if (data.error) throw new Error(data.error.message);
 
           const aiText = data.choices[0].message.content;
 
@@ -308,9 +329,6 @@
           statusText.style.color = "#92fe9d";
 
           const utterance = new SpeechSynthesisUtterance(aiText);
-          utterance.rate = 1.0;
-          utterance.pitch = 1.0;
-          
           utterance.onend = () => { 
             statusText.innerText = "Tap orb to speak";
             statusText.style.color = "#86868b";
@@ -321,7 +339,6 @@
         } catch (error) {
           console.error(error);
           orb.className = "orb";
-          wave.classList.remove('active');
           statusText.innerText = "Error: " + error.message;
           statusText.style.color = "#ff4757";
         }
@@ -332,15 +349,6 @@
         wave.classList.remove('active');
         statusText.innerText = "Error: " + event.error;
         statusText.style.color = "#ff4757";
-      };
-
-      recognition.onend = () => {
-        if (orb.classList.contains("listening")) {
-          orb.className = "orb";
-          wave.classList.remove('active');
-          statusText.innerText = "Tap orb to speak";
-          statusText.style.color = "#86868b";
-        }
       };
     }
   </script>
